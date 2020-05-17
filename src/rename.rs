@@ -4,6 +4,7 @@ use encoding::{self, label::encoding_from_whatwg_label, DecoderTrap, EncoderTrap
 use fs::OpenOptions;
 use rayon::iter::ParallelBridge;
 use rayon::prelude::*;
+use regex::*;
 use std::sync::mpsc::{channel, Sender};
 use std::{
     fs,
@@ -73,19 +74,49 @@ pub extern "stdcall" fn rename(
     rx.into_iter().par_bridge().for_each(handle_work)
 }
 
-fn replace(source: impl AsRef<str>, find: &str, replace: &str, _use_regex: bool) -> (String, i32) {
-    let source = source.as_ref();
-    let mut result = String::new();
-    let mut last_end = 0;
-    let mut num = 0;
-    for (start, part) in source.match_indices(find) {
-        result.push_str(unsafe { source.get_unchecked(last_end..start) });
-        result.push_str(replace);
-        last_end = start + part.len();
-        num += 1;
+struct CountingReplacer<'a> {
+    value: &'a str,
+    count: i32,
+}
+
+impl Replacer for &mut CountingReplacer<'_> {
+    fn replace_append(&mut self, caps: &Captures, dst: &mut String) {
+        self.count += 1;
+        self.value.replace_append(caps, dst)
     }
-    result.push_str(unsafe { source.get_unchecked(last_end..source.len()) });
-    (result, num)
+}
+
+fn replace(
+    source: impl AsRef<str>,
+    find: &str,
+    replace: &str,
+    use_regex: bool,
+) -> Result<(String, i32), String> {
+    let source = source.as_ref();
+    if use_regex {
+        let reg = expect!(
+            Regex::new(find),
+            format!("\"{}\" is not a valid regular expression.", find)
+        );
+        let mut replacer = CountingReplacer {
+            value: replace,
+            count: 0,
+        };
+        let result = reg.replace_all(source, &mut replacer);
+        Ok((result.to_string(), replacer.count))
+    } else {
+        let mut last_end = 0;
+        let mut num = 0;
+        let mut result = String::new();
+        for (start, part) in source.match_indices(find) {
+            result.push_str(unsafe { source.get_unchecked(last_end..start) });
+            result.push_str(replace);
+            last_end = start + part.len();
+            num += 1;
+        }
+        result.push_str(unsafe { source.get_unchecked(last_end..source.len()) });
+        Ok((result, num))
+    }
 }
 
 fn handle_work<'a>(work: RenameWork<'a>) {
@@ -136,7 +167,7 @@ fn process_file_name(
     repl: &str,
     use_regex: bool,
 ) -> Result<bool, String> {
-    let (new_name, num) = replace(
+    let (new_name, num) = expect!(replace(
         expect!(
             expect!(path.file_name(), None => format!("Failed to get a file name."))
                 .convert_to_utf_8(),
@@ -145,7 +176,7 @@ fn process_file_name(
         find,
         repl,
         use_regex,
-    );
+    ));
     if num > 0 {
         let to_path = path.parent().unwrap().join(new_name);
         expect!(
@@ -196,7 +227,7 @@ fn process_file_content(
         path.as_humanized_string(),
         err
     ));
-    let (content, num) = replace(content, find, repl, use_regex);
+    let (content, num) = expect!(replace(content, find, repl, use_regex));
     if num > 0 {
         buffer = expect!(
             coder.encode(content.as_ref(), EncoderTrap::Ignore),

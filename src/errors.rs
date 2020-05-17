@@ -124,4 +124,12 @@ macro_rules! expect {
             }
         }
     };
+    ($result:expr) => {
+        match $result {
+            Ok(v) => v,
+            Err(e) => {
+                return core::result::Result::Err(e);
+            }
+        }
+    };
 }
