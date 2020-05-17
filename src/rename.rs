@@ -8,7 +8,7 @@ use std::sync::mpsc::{channel, Sender};
 use std::{
     fs,
     io::{Read, Seek, SeekFrom, Write},
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 #[derive(Debug, Copy, Clone)]
@@ -93,27 +93,9 @@ fn handle_work<'a>(work: RenameWork<'a>) {
     let mut output = format!("{}:\n", work.path.as_humanized_string());
     let mut modified = false;
     if !work.is_root && work.mode.is_replace_name() {
-        let (new_name, num) = replace(
-            work.path
-                .file_name()
-                .expect_display()
-                .convert_to_utf_8()
-                .expect_display(),
-            work.find,
-            work.replace,
-            work.use_regex,
-        );
-        if num > 0 {
-            let to_path = work.path.parent().unwrap().join(new_name);
-            fs::rename(&work.path, &to_path).expect(
-                format!(
-                    "Failed on renaming \"{}\" to \"{}\".",
-                    &work.path.as_humanized_string(),
-                    &to_path.as_humanized_string()
-                )
-                .as_ref(),
-            );
-            work.path = to_path;
+        if process_file_name(&mut work.path, work.find, work.replace, work.use_regex)
+            .expect_display()
+        {
             output.push_str(
                 format!("   ·Renamed to \"{}\".\n", &work.path.as_humanized_string()).as_ref(),
             );
@@ -122,24 +104,10 @@ fn handle_work<'a>(work: RenameWork<'a>) {
     }
     if fs::metadata(&work.path).expect_display().is_file() {
         if work.mode.is_replace_content() {
-            let mut file = OpenOptions::new()
-                .read(true)
-                .write(true)
-                .open(&work.path)
-                .expect_display();
-            let mut buffer = Vec::new();
-            file.read_to_end(&mut buffer).expect_display();
-            let (encode, _confidence, _language) = detect(&mut buffer);
-            let coder = encoding_from_whatwg_label(charset2encoding(&encode)).expect_display();
-            let content = coder.decode(&buffer, DecoderTrap::Ignore).expect_display();
-            let (content, num) = replace(content, work.find, work.replace, work.use_regex);
+            let num =
+                process_file_content(work.path.as_ref(), work.find, work.replace, work.use_regex)
+                    .expect_display();
             if num > 0 {
-                buffer = coder
-                    .encode(content.as_ref(), EncoderTrap::Ignore)
-                    .expect_fn(|err| err);
-                file.set_len(0).expect_display();
-                file.seek(SeekFrom::Start(0)).expect_display();
-                file.write_all(&buffer).expect_display();
                 output.push_str(format!("   ·Replaced {} matches.\n", num).as_ref());
                 modified = true;
             }
@@ -160,4 +128,96 @@ fn handle_work<'a>(work: RenameWork<'a>) {
     if !work.silence && modified {
         print!("{}", output);
     }
+}
+
+fn process_file_name(
+    path: &mut PathBuf,
+    find: &str,
+    repl: &str,
+    use_regex: bool,
+) -> Result<bool, String> {
+    let (new_name, num) = replace(
+        expect!(
+            expect!(path.file_name(), None => format!("Failed to get a file name."))
+                .convert_to_utf_8(),
+            |err| format!("File \"{}\" has an invalid name.", err)
+        ),
+        find,
+        repl,
+        use_regex,
+    );
+    if num > 0 {
+        let to_path = path.parent().unwrap().join(new_name);
+        expect!(
+            fs::rename(&path, &to_path),
+            format!(
+                "Failed on renaming \"{}\" to \"{}\"",
+                path.as_humanized_string(),
+                to_path.as_humanized_string()
+            )
+        );
+        *path = to_path;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+fn process_file_content(
+    path: &Path,
+    find: &str,
+    repl: &str,
+    use_regex: bool,
+) -> Result<i32, String> {
+    let mut file = expect!(
+        OpenOptions::new().read(true).write(true).open(path),
+        |err| format!(
+            "Failed on openning \"{}\":\n{}",
+            path.as_humanized_string(),
+            err
+        )
+    );
+    let mut buffer = Vec::new();
+    expect!(file.read_to_end(&mut buffer), |err| format!(
+        "Failed on reading \"{}\":\n{}",
+        path.as_humanized_string(),
+        err
+    ));
+    let (encode, _confidence, _language) = detect(&mut buffer);
+    let coder = expect!(
+        encoding_from_whatwg_label(charset2encoding(&encode)),
+        None => format!(
+            "Failed on detecting the encoding of \"{}\".",
+            path.as_humanized_string()
+        )
+    );
+    let content = expect!(coder.decode(&buffer, DecoderTrap::Ignore), |err| format!(
+        "Failed on decoding \"{}\":\n{}",
+        path.as_humanized_string(),
+        err
+    ));
+    let (content, num) = replace(content, find, repl, use_regex);
+    if num > 0 {
+        buffer = expect!(
+            coder.encode(content.as_ref(), EncoderTrap::Ignore),
+            |err| format!(
+                "Failed on re-encoding \"{}\":\n{}",
+                path.as_humanized_string(),
+                err
+            )
+        );
+        expect!(
+            file.set_len(0),
+            format!("Failed on writing \"{}\".", path.as_humanized_string())
+        );
+        expect!(
+            file.seek(SeekFrom::Start(0)),
+            format!("Failed on writing \"{}\".", path.as_humanized_string())
+        );
+        expect!(
+            file.write_all(&buffer),
+            format!("Failed on writing \"{}\".", path.as_humanized_string())
+        );
+    }
+    Ok(num)
 }

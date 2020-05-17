@@ -1,6 +1,6 @@
-use std::include;
+extern crate mrn;
 
-include!("lib.rs");
+use mrn::*;
 mod cli;
 
 fn main() {

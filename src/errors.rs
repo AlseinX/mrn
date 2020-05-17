@@ -97,3 +97,31 @@ impl<'a> ConvertToUtf8 for &'a OsStr {
         }
     }
 }
+
+#[macro_export]
+macro_rules! expect {
+    ($result:expr, |$err:ident| $error:expr) => {
+        match $result {
+            Ok(v) => v,
+            Err($err) => {
+                return core::result::Result::Err($error);
+            }
+        }
+    };
+    ($result:expr, $error:expr) => {
+        match $result {
+            Ok(v) => v,
+            Err(_) => {
+                return core::result::Result::Err($error);
+            }
+        }
+    };
+    ($result:expr, None => $error:expr) => {
+        match $result {
+            Some(v) => v,
+            None => {
+                return core::result::Result::Err($error);
+            }
+        }
+    };
+}
