@@ -7,8 +7,10 @@ use rayon::prelude::*;
 use regex::*;
 use std::sync::mpsc::{channel, Sender};
 use std::{
+    ffi::CStr,
     fs,
     io::{Read, Seek, SeekFrom, Write},
+    os::raw::c_char,
     path::{Path, PathBuf},
 };
 
@@ -48,7 +50,39 @@ struct RenameWork<'a> {
 }
 
 #[no_mangle]
-pub extern "stdcall" fn rename(
+pub extern "system" fn mrn(
+    entry_dir: *const c_char,
+    find: *const c_char,
+    replace: *const c_char,
+    use_regex: bool,
+    replace_name: bool,
+    replace_content: bool,
+    silence: bool,
+) {
+    rename(
+        PathBuf::from(to_str(entry_dir)),
+        to_str(find),
+        to_str(replace),
+        use_regex,
+        match (replace_name, replace_content) {
+            (true, true) => RenameMode::Both,
+            (true, false) => RenameMode::NameOnly,
+            (false, true) => RenameMode::ContentOnly,
+            _ => panic!("Must specify at least one of name and content to replace."),
+        },
+        silence,
+    )
+}
+
+fn to_str<'a>(ptr: *const c_char) -> &'a str {
+    unsafe {
+        CStr::from_ptr(ptr)
+            .to_str()
+            .expect("Invalid argument string.")
+    }
+}
+
+pub fn rename(
     entry_dir: PathBuf,
     find: &str,
     replace: &str,

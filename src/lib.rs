@@ -1,7 +1,7 @@
-mod errors;
-mod path;
+pub mod errors;
+pub mod path;
 mod rename;
 
-pub use errors::*;
-pub use path::*;
+use errors::*;
+use path::*;
 pub use rename::*;

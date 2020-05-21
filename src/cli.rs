@@ -1,4 +1,4 @@
-use crate::{RenameMode::*, *};
+use crate::{errors::*, RenameMode::*, *};
 use clap::{App, Arg};
 use std::{env, fs, path::PathBuf};
 
