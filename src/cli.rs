@@ -4,7 +4,7 @@ use std::{env, fs, path::PathBuf};
 
 fn app<'a, 'b>() -> App<'a, 'b> {
     App::new("Massive Renamer")
-        .version("0.1.0")
+        .version("0.1.1")
         .author("Alsein <https://github.com/AlseinX>")
         .about("Massively rename the file names within contents.")
         .arg(

@@ -1,6 +1,6 @@
 [package]
 name = 'mrn'
-version = '0.1.0'
+version = '0.1.1'
 authors = ['AlseinX <xyh951115@live.com>']
 edition = '2018'
 
