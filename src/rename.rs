@@ -176,8 +176,9 @@ fn handle_work<'a>(work: RenameWork<'a>) {
                     modified = true;
                 }
                 Err(err) => {
-                    output.push_str(err.as_ref());
-                    output.push_str("   ·Not a regular text file, skipped.\n");
+                    output.push_str(
+                        format!("   ·{}\n   ·Not a regular text file, skipped.\n", err).as_ref(),
+                    );
                     modified = true;
                 }
                 _ => {}
