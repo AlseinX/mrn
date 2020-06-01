@@ -169,12 +169,18 @@ fn handle_work<'a>(work: RenameWork<'a>) {
     }
     if fs::metadata(&work.path).expect_display().is_file() {
         if work.mode.is_replace_content() {
-            let num =
-                process_file_content(work.path.as_ref(), work.find, work.replace, work.use_regex)
-                    .expect_display();
-            if num > 0 {
-                output.push_str(format!("   ·Replaced {} matches.\n", num).as_ref());
-                modified = true;
+            match process_file_content(work.path.as_ref(), work.find, work.replace, work.use_regex)
+            {
+                Ok(num) if num > 0 => {
+                    output.push_str(format!("   ·Replaced {} matches.\n", num).as_ref());
+                    modified = true;
+                }
+                Err(err) => {
+                    output.push_str(err.as_ref());
+                    output.push_str("   ·Not a regular text file, skipped.\n");
+                    modified = true;
+                }
+                _ => {}
             }
         }
     } else {
